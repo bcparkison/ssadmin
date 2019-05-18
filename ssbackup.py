@@ -5,12 +5,13 @@ import datetime
 from os import listdir
 from os.path import normpath, isdir, join
 import re
+import subprocess
 
 SRC_SNAP_DIR = normpath("/mnt/fsroot/snapshots")
 DST_SNAP_DIR = normpath("/mnt/backup")
 SNAP_TS_FORMAT = "%Y-%m-%d.%H-%M-%S"
 RETENTION_DAYS = 1
-SNAPNAME_REGEX = r'(.*)-(\d\d\d\d-\d\d-\d\d\.\d\d-\d\d-\d\d)'
+SNAP_NAME_REGEX = r'(.*)-(\d\d\d\d-\d\d-\d\d\.\d\d-\d\d-\d\d)'
 
 srcSnaps = [snap for snap in listdir(SRC_SNAP_DIR) if (isdir(join(SRC_SNAP_DIR, snap)))]
 dstSnaps = [snap for snap in listdir(DST_SNAP_DIR) if (isdir(join(DST_SNAP_DIR, snap)))]
@@ -26,13 +27,20 @@ def print_dst_snaps():
         print("Destination snapshot:", snap)
 
 
+def run_command(command):
+    if command:
+        print("Running: {}".format(command))
+        result = subprocess.call(command, shell=True)
+        print("Command result: {}".format(result))
+
+
 # Snapshot have names like <subvol>-<year-month-day>.<hour-minute-second>
 # This method takes a list of snapshots, and returns a map of subvolumes to
 # sorted lists of snapshots.
 def sort_snaps(snapshots):
     snap_dict = defaultdict(list)
     for snap in snapshots:
-        match = re.match(SNAPNAME_REGEX, snap)
+        match = re.match(SNAP_NAME_REGEX, snap)
         if match:
             snap_dict[match.group(1)].append(match.group(2))
         else:
@@ -61,16 +69,17 @@ def make_snap_path(basepath, subvol, timestamp):
 
 def backup_snapshot(subvol, parent_ts, current_ts):
     src_path = make_snap_path(SRC_SNAP_DIR, subvol, current_ts)
+    command = None
     if parent_ts is None:
         # print("Doing full snapshot backup on {} because there is no shared parent snapshot".format(subvol))
-        print("btrfs send {} | btrfs receive {}".format(src_path, DST_SNAP_DIR))
+        run_command("btrfs send {} | btrfs receive {}".format(src_path, DST_SNAP_DIR))
     elif current_ts <= parent_ts:
         print("Skipping {} because current snapshot ({}) is not newer than parent snapshot ({})".format(
             subvol, current_ts, parent_ts))
     else:
         # print("Doing incremental backup on {} from {} -> {}".format(subvol, parent_ts, current_ts))
         parent_path = make_snap_path(SRC_SNAP_DIR, subvol, parent_ts)
-        print("btrfs send -p {} {} | btrfs receive {}".format(parent_path, src_path, DST_SNAP_DIR))
+        run_command("btrfs send -p {} {} | btrfs receive {}".format(parent_path, src_path, DST_SNAP_DIR))
 
 
 def backup_snapshots():
@@ -92,7 +101,7 @@ def cleanup_snapshots():
             if ts < retention_str:
                 # print("Need to delete snapshot on subvolume {} with timestamp {}".format(subvol, ts))
                 del_snap_path = make_snap_path(SRC_SNAP_DIR, subvol, ts)
-                print("btrfs subvolume delete {}".format(del_snap_path))
+                run_command("btrfs subvolume delete {}".format(del_snap_path))
 
 
 def parse_arguments():
