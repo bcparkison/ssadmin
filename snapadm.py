@@ -6,32 +6,33 @@ from os import listdir
 from os.path import normpath, isdir, join
 import re
 import subprocess
+from location import SnapLocation
+from replicator import SnapshotReplicator
 
 SRC_SNAP_DIR = normpath("/mnt/fsroot/snapshots")
 DST_SNAP_DIR = normpath("/mnt/backup")
 SNAP_TS_FORMAT = "%Y-%m-%d.%H-%M-%S"
 RETENTION_DAYS = 1
 SNAP_NAME_REGEX = r'(.*)-(\d\d\d\d-\d\d-\d\d\.\d\d-\d\d-\d\d)'
+DRY_RUN = True
 
 srcSnaps = [snap for snap in listdir(SRC_SNAP_DIR) if (isdir(join(SRC_SNAP_DIR, snap)))]
 dstSnaps = [snap for snap in listdir(DST_SNAP_DIR) if (isdir(join(DST_SNAP_DIR, snap)))]
 
 
-def print_src_snaps():
-    for snap in srcSnaps:
-        print("Source snapshot:", snap)
-
-
-def print_dst_snaps():
-    for snap in dstSnaps:
-        print("Destination snapshot:", snap)
+def convert_snaps():
+    src_loc = SnapLocation(SRC_SNAP_DIR)
+    dst_loc = SnapLocation(DST_SNAP_DIR)
+    replicator = SnapshotReplicator(src_loc, dst_loc)
+    replicator.replicate_snapshots()
 
 
 def run_command(command):
     if command:
         print("Running: {}".format(command))
-        result = subprocess.call(command, shell=True)
-        print("Command result: {}".format(result))
+        if not DRY_RUN:
+            result = subprocess.call(command, shell=True)
+            print("Command result: {}".format(result))
 
 
 # Snapshot have names like <subvol>-<year-month-day>.<hour-minute-second>
@@ -104,6 +105,18 @@ def cleanup_snapshots():
                 run_command("btrfs subvolume delete {}".format(del_snap_path))
 
 
+def sort_example():
+    names = [
+        "home.2019-05-10.16-44-33",
+        "root.2019-05-11.15-50-08",
+        "root.2019-05-10.16-44-23",
+        "home.2019-05-17.21-40-11",
+        "root.2019-05-17.21-40-02",
+    ]
+    names.sort()
+    print(names)
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("command", type=str, choices=["backup", "cleanup"])
@@ -112,9 +125,11 @@ def parse_arguments():
 
 if __name__ == "__main__":
     args = parse_arguments()
-    print_src_snaps()
-    print_dst_snaps()
-    if args.command == "backup":
-        backup_snapshots()
-    if args.command == "cleanup":
-        cleanup_snapshots()
+    # sort_example()
+    # print_src_snaps()
+    # print_dst_snaps()
+    convert_snaps()
+    # if args.command == "backup":
+    #     backup_snapshots()
+    # if args.command == "cleanup":
+    #     cleanup_snapshots()
